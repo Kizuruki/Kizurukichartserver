@@ -1,0 +1,12 @@
+{
+    "enabled": false,
+    "version": 13,
+    "title": "ProSeka R",
+    "subtitle": "ProSeka Rush",
+    "author": "prosekaR",
+    "skin_name": "PR-S1-3",
+    "background_name": "PR-BG-3",
+    "effect_name": "PR-SD-1",
+    "particle_name": "PR-PT-3",
+    "description": "A recreation of Project Sekai: Colorful Stage! engine in Sonolus.\nVersion: 1.4.10\n\nForked from the pjsekai engine by Burrito#1000.\nhttps://github.com/NonSpicyBurrito/sonolus-pjsekai-engine\n\nGithub:\nhttps://github.com/hyeon2006/sonolus-pjsekai-js"
+}
