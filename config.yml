@@ -1,0 +1,13 @@
+server:
+  port: 8080
+  base-url: "https://charts.kizuruki.com"
+  force-https: true
+  dynamic-storage-path: "./dynamic_charts"
+  enable-dynamic: true
+sonolus:
+  required-client-version: 1.0.0
+  items-per-page:
+    default: 10
+    engines: 10
+  name: "Kizuruki Charts"
+  description: "charts.kizuruki.com A server for all of Kizuruki's Charts!"
