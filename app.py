@@ -235,6 +235,9 @@ async def start_fastapi(args):
 if __name__ == "__main__":
     raise SystemExit("Please run main.py")
     
-from routes import auth as auth_routes, charts as chart_routes
-app.include_router(auth_routes.router, prefix="/api/auth", tags=["auth"])
-app.include_router(chart_routes.router, prefix="/api/charts", tags=["charts"])
+from fastapi import FastAPI
+from routes import auth as sonolus_auth, results as sonolus_results
+
+app = FastAPI()
+app.include_router(sonolus_auth.router)
+app.include_router(sonolus_results.router)
