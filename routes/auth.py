@@ -1,52 +1,50 @@
-# routes/auth.py
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from passlib.context import CryptContext
-from jose import jwt
-from datetime import datetime, timedelta
-from sqlmodel import select
-from models import User
-from db import engine
+# sonoserver/routes/auth.py
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import JSONResponse
+import json, time, os
+from utils.sonolus_sig import verify_sonolus_signature, is_recent
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = "dev-secret-please-change"  # set from env in production
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+# POST /sonolus/authenticate_external — “Sign in with Sonolus” callback
+# Spec: External Authentication (deep link → POST to your endpoint). :contentReference[oaicite:2]{index=2}
+@router.post("/sonolus/authenticate_external")
+async def authenticate_external(request: Request):
+    raw = await request.body()
+    sig = request.headers.get("Sonolus-Signature")
+    if not verify_sonolus_signature(raw, sig):
+        raise HTTPException(401, "Invalid signature")
+    body = json.loads(raw.decode("utf-8"))
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
+    if body.get("type") != "authenticateExternal":
+        raise HTTPException(401, "Invalid type")
+    if not is_recent(body.get("time", 0)):
+        raise HTTPException(401, "Stale message")
 
-def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
+    # Minimal profile fields (examples; body.userProfile may include more)
+    profile = body.get("userProfile", {})
+    sonolus_user_id = profile.get("id")
+    name = profile.get("name")
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+    # Call your chart-backend to mint a WEBSITE session for charts.kizuruki.com
+    # (Or write directly to a shared DB/session store.)
+    # Example: POST http://127.0.0.1:8080/api/accounts/session/external/complete
+    # with the signed body so backend can trust it (in production, use an internal secret).
+    # For this skeleton, we just return a message that the website can poll for status.
+    return JSONResponse({"message": f"Logged in as {name or 'Sonolus User'}."})
 
-@router.post("/register")
-async def register(u: UserCreate):
-    async with engine.connect() as conn:
-        result = await conn.execute(select(User).where(User.username == u.username))
-        existing = result.scalars().first()
-        if existing:
-            raise HTTPException(400, "User already exists")
-    user = User(username=u.username, hashed_password=get_password_hash(u.password))
-    async with engine.begin() as conn:
-        conn.add(user)
-    return {"ok": True}
+# POST /sonolus/authenticate — optional short-lived session for privileged Sonolus calls
+# Spec: POST /sonolus/authenticate returns { session, expiration }. :contentReference[oaicite:3]{index=3}
+@router.post("/sonolus/authenticate")
+async def authenticate_app(request: Request):
+    raw = await request.body()
+    sig = request.headers.get("Sonolus-Signature")
+    if not verify_sonolus_signature(raw, sig):
+        raise HTTPException(401, "Invalid signature")
+    body = json.loads(raw.decode("utf-8"))
+    if not is_recent(body.get("time", 0)):
+        raise HTTPException(401, "Stale message")
 
-@router.post("/token", response_model=Token)
-async def login_for_token(u: UserCreate):
-    async with engine.connect() as conn:
-        result = await conn.execute(select(User).where(User.username == u.username))
-        user = result.scalars().first()
-        if not user or not verify_password(u.password, user.hashed_password):
-            raise HTTPException(status_code=401, detail="Incorrect username or password")
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        token = jwt.encode({"sub": user.username, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
-        return {"access_token": token}
+    # Create a short-lived token the app will echo back on privileged calls
+    exp_ms = int(time.time() * 1000) + 30 * 60 * 1000  # 30 minutes
+    return JSONResponse({"session": "sonolus-session-token", "expiration": exp_ms})
